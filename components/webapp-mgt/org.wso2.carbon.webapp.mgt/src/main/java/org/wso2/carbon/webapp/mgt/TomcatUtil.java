@@ -19,7 +19,7 @@ package org.wso2.carbon.webapp.mgt;
 import org.apache.catalina.Context;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Request;
-import org.apache.tomcat.util.http.mapper.MappingData;
+import org.apache.catalina.mapper.MappingData;
 import org.wso2.carbon.tomcat.api.CarbonTomcatService;
 import org.wso2.carbon.url.mapper.HotUpdateService;
 import org.wso2.carbon.utils.CarbonUtils;
@@ -87,7 +87,7 @@ public class TomcatUtil {
         MappingData mappingData = connectorReq.getMappingData();
         mappingData.recycle();
 
-        connectorReq.getConnector().
+        connectorReq.getConnector().getService().
                 getMapper().map(connectorReq.getCoyoteRequest().serverName(),
                                 connectorReq.getCoyoteRequest().decodedURI(), null,
                                 mappingData);

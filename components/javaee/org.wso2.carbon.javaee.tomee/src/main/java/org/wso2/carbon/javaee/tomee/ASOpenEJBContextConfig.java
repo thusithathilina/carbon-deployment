@@ -16,7 +16,6 @@
 package org.wso2.carbon.javaee.tomee;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.deploy.ApplicationListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.openejb.assembler.classic.WebAppBuilder;
@@ -76,7 +75,7 @@ public class ASOpenEJBContextConfig extends OpenEJBContextConfig {
             final Class<?> myfacesInitializer = Class.forName(MYFACES_TOMEEM_CONTAINER_INITIALIZER, true, context.getLoader().getClassLoader());
             final ServletContainerInitializer instance = (ServletContainerInitializer) myfacesInitializer.newInstance();
             context.addServletContainerInitializer(instance, getJsfClasses(context));
-            context.addApplicationListener(new ApplicationListener(TOMEE_MYFACES_CONTEXT_LISTENER, false)); // cleanup listener
+            context.addApplicationListener(TOMEE_MYFACES_CONTEXT_LISTENER); // cleanup listener
         } catch (final Exception ignored) {
             // no-op
         } catch (final NoClassDefFoundError error) {

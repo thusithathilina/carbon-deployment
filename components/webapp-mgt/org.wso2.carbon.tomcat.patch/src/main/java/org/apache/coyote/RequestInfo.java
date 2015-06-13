@@ -23,262 +23,252 @@ import org.wso2.carbon.tomcat.ext.transport.statistics.TransportStatisticsEntry;
 import javax.management.ObjectName;
 
 public class RequestInfo {
-    RequestGroupInfo global = null;
+	private RequestGroupInfo global = null;
 
-    // ----------------------------------------------------------- Constructors
+	// ----------------------------------------------------------- Constructors
 
-    public RequestInfo(Request req) {
-        this.req = req;
-    }
+	public RequestInfo(Request req) {
+		this.req = req;
+	}
 
-    public RequestGroupInfo getGlobalProcessor() {
-        return global;
-    }
+	public RequestGroupInfo getGlobalProcessor() {
+		return global;
+	}
 
-    public void setGlobalProcessor(RequestGroupInfo global) {
-        if (global != null) {
-            this.global = global;
-            global.addRequestProcessor(this);
-        } else {
-            if (this.global != null) {
-                this.global.removeRequestProcessor(this);
-                this.global = null;
-            }
-        }
-    }
+	public void setGlobalProcessor(RequestGroupInfo global) {
+		if (global != null) {
+			this.global = global;
+			global.addRequestProcessor(this);
+		} else {
+			if (this.global != null) {
+				this.global.removeRequestProcessor(this);
+				this.global = null;
+			}
+		}
+	}
 
+	// ----------------------------------------------------- Instance Variables
+	private final Request req;
+	private int stage = Constants.STAGE_NEW;
+	private String workerThreadName;
+	private ObjectName rpName;
 
-    // ----------------------------------------------------- Instance Variables
-    Request req;
-    int stage = Constants.STAGE_NEW;
-    String workerThreadName;
-    ObjectName rpName;
+	// -------------------- Information about the current request  -----------
+	// This is useful for long-running requests only
 
-    // -------------------- Information about the current request  -----------
-    // This is useful for long-running requests only
+	public String getMethod() {
+		return req.method().toString();
+	}
 
-    public String getMethod() {
-        return req.method().toString();
-    }
+	public String getCurrentUri() {
+		return req.requestURI().toString();
+	}
 
-    public String getCurrentUri() {
-        return req.requestURI().toString();
-    }
+	public String getCurrentQueryString() {
+		return req.queryString().toString();
+	}
 
-    public String getCurrentQueryString() {
-        return req.queryString().toString();
-    }
+	public String getProtocol() {
+		return req.protocol().toString();
+	}
 
-    public String getProtocol() {
-        return req.protocol().toString();
-    }
+	public String getVirtualHost() {
+		return req.serverName().toString();
+	}
 
-    public String getVirtualHost() {
-        return req.serverName().toString();
-    }
+	public int getServerPort() {
+		return req.getServerPort();
+	}
 
-    public int getServerPort() {
-        return req.getServerPort();
-    }
+	public String getRemoteAddr() {
+		req.action(ActionCode.REQ_HOST_ADDR_ATTRIBUTE, null);
+		return req.remoteAddr().toString();
+	}
 
-    public String getRemoteAddr() {
-        req.action(ActionCode.REQ_HOST_ADDR_ATTRIBUTE, null);
-        return req.remoteAddr().toString();
-    }
+	/**
+	 * Obtain the remote address for this connection as reported by an
+	 * intermediate proxy (if any).
+	 */
+	public String getRemoteAddrForwarded() {
+		String remoteAddrProxy = (String) req.getAttribute(Constants.REMOTE_ADDR_ATTRIBUTE);
+		if (remoteAddrProxy == null) {
+			return getRemoteAddr();
+		}
+		return remoteAddrProxy;
+	}
 
-    public int getContentLength() {
-        return req.getContentLength();
-    }
+	public int getContentLength() {
+		return req.getContentLength();
+	}
 
-    public long getRequestBytesReceived() {
-        return req.getBytesRead();
-    }
+	public long getRequestBytesReceived() {
+		return req.getBytesRead();
+	}
 
-    public long getRequestBytesSent() {
-        return req.getResponse().getContentWritten();
-    }
+	public long getRequestBytesSent() {
+		return req.getResponse().getContentWritten();
+	}
 
-    public long getRequestProcessingTime() {
-        if (getStage() == org.apache.coyote.Constants.STAGE_ENDED) {
-           return 0;
-        } else {
-            return (System.currentTimeMillis() - req.getStartTime());
-        }
-    }
+	public long getRequestProcessingTime() {
+		if (getStage() == org.apache.coyote.Constants.STAGE_ENDED)
+			return 0;
+		else
+			return (System.currentTimeMillis() - req.getStartTime());
+	}
 
-    // -------------------- Statistical data  --------------------
-    // Collected at the end of each request.
-    private long bytesSent;
-    private long bytesReceived;
+	// -------------------- Statistical data  --------------------
+	// Collected at the end of each request.
+	private long bytesSent;
+	private long bytesReceived;
 
-    // Total time = divide by requestCount to get average.
-    private long processingTime;
-    // The longest response time for a request
-    private long maxTime;
-    // URI of the request that took maxTime
-    private String maxRequestUri;
+	// Total time = divide by requestCount to get average.
+	private long processingTime;
+	// The longest response time for a request
+	private long maxTime;
+	// URI of the request that took maxTime
+	private String maxRequestUri;
 
-    private int requestCount;
-    // number of response codes >= 400
-    private int errorCount;
+	private int requestCount;
+	// number of response codes >= 400
+	private int errorCount;
 
-    //the time of the last request
-    private long lastRequestProcessingTime = 0;
+	//the time of the last request
+	private long lastRequestProcessingTime = 0;
 
-    // Size of the last request
-    private long lastRequestSize;
+	/**
+	 * Called by the processor before recycling the request. It'll collect
+	 * statistic information.
+	 */
+	void updateCounters() {
+		bytesReceived += req.getBytesRead();
+		bytesSent += req.getResponse().getContentWritten();
 
-    // Size of the last response
-    private long lastResponseSize;
+		// Patch to record bandwidth statistics data. /////
+		//usage stats will be published only if metering is enabled. /////
+		if ("true".equals(System.getProperty("metering.enabled"))) {
+			publishBandwidthUsageStatistics(req);            //
+		}
+		///////////////////////////////////////////////////
 
-    // URI of the last request
-    private String lastRequestUri;
+		requestCount++;
+		if (req.getResponse().getStatus() >= 400) {
+			errorCount++;
+		}
+		long t0 = req.getStartTime();
+		long t1 = System.currentTimeMillis();
+		long time = t1 - t0;
+		this.lastRequestProcessingTime = time;
+		processingTime += time;
+		if (maxTime < time) {
+			maxTime = time;
+			maxRequestUri = req.requestURI().toString();
+		}
+	}
 
+	/**
+	 * Publish bandwidth usage data(request size, response size and request url) to carbon.
+	 *
+	 * @param request Coyote request object
+	 */
+	private void publishBandwidthUsageStatistics(Request request) {
+		TransportStatisticsEntry entry =
+				new TransportStatisticsEntry(request.getBytesRead(), request.getResponse().getContentWritten(),
+				                             request.requestURI().toString());
+		String constructedUri = entry.constructRequestUrl(request.requestURI().toString(), request.getHeader("HOST"));
+		if (!constructedUri.equalsIgnoreCase(request.requestURI().toString())) {
+			entry.setRequestUrl(constructedUri);
+		}
+		if (entry.getContext() != null &&
+		    (entry.getContext().equals("services") || entry.getContext().equals("webapps"))) {
+			TransportStatisticsContainer.addTransportStatisticsEntry(entry);
+		}
+	}
 
-    /**
-     * Called by the processor before recycling the request. It'll collect
-     * statistic information.
-     */
-    void updateCounters() {
-        bytesReceived += req.getBytesRead();
-        bytesSent += req.getResponse().getContentWritten();
+	public int getStage() {
+		return stage;
+	}
 
-        // Patch to record bandwidth statistics data. /////
-        //usage stats will be published only if metering is enabled. /////
-        if("true".equals(System.getProperty("metering.enabled"))){
-            publishBandwidthUsageStatistics(req);            //
-        }
-        ///////////////////////////////////////////////////
+	public void setStage(int stage) {
+		this.stage = stage;
+	}
 
-        requestCount++;
-        if (req.getResponse().getStatus() >= 400) {
-            errorCount++;
-        }
-        long t0 = req.getStartTime();
-        long t1 = System.currentTimeMillis();
-        long time = t1 - t0;
-        this.lastRequestProcessingTime = time;
-        processingTime += time;
-        if (maxTime < time) {
-            maxTime = time;
-            maxRequestUri = req.requestURI().toString();
-        }
-    }
+	public long getBytesSent() {
+		return bytesSent;
+	}
 
-    /**
-     * Publish bandwidth usage data(request size, response size and request url) to carbon.
-     * @param request Coyote request object
-     */
-    private void publishBandwidthUsageStatistics(Request request){
-        TransportStatisticsEntry entry = new TransportStatisticsEntry(request.getBytesRead(),
-                request.getResponse().getContentWritten(),
-                request.requestURI().toString());
-        String constructedUri = entry.constructRequestUrl(request.requestURI().toString(), request.getHeader("HOST"));
-        if(!constructedUri.equalsIgnoreCase(request.requestURI().toString())) {
-            entry.setRequestUrl(constructedUri);
-        }
-        if (entry.getContext() != null && (entry.getContext().equals("services") || entry.getContext().equals("webapps"))) {
-            TransportStatisticsContainer.addTransportStatisticsEntry(entry);
-        }
-    }
+	public void setBytesSent(long bytesSent) {
+		this.bytesSent = bytesSent;
+	}
 
-    public int getStage() {
-        return stage;
-    }
+	public long getBytesReceived() {
+		return bytesReceived;
+	}
 
-    public void setStage(int stage) {
-        this.stage = stage;
-    }
+	public void setBytesReceived(long bytesReceived) {
+		this.bytesReceived = bytesReceived;
+	}
 
-    public long getBytesSent() {
-        return bytesSent;
-    }
+	public long getProcessingTime() {
+		return processingTime;
+	}
 
-    public void setBytesSent(long bytesSent) {
-        this.bytesSent = bytesSent;
-    }
+	public void setProcessingTime(long processingTime) {
+		this.processingTime = processingTime;
+	}
 
-    public long getBytesReceived() {
-        return bytesReceived;
-    }
+	public long getMaxTime() {
+		return maxTime;
+	}
 
-    public void setBytesReceived(long bytesReceived) {
-        this.bytesReceived = bytesReceived;
-    }
+	public void setMaxTime(long maxTime) {
+		this.maxTime = maxTime;
+	}
 
-    public long getProcessingTime() {
-        return processingTime;
-    }
+	public String getMaxRequestUri() {
+		return maxRequestUri;
+	}
 
-    public void setProcessingTime(long processingTime) {
-        this.processingTime = processingTime;
-    }
+	public void setMaxRequestUri(String maxRequestUri) {
+		this.maxRequestUri = maxRequestUri;
+	}
 
-    public long getMaxTime() {
-        return maxTime;
-    }
+	public int getRequestCount() {
+		return requestCount;
+	}
 
-    public void setMaxTime(long maxTime) {
-        this.maxTime = maxTime;
-    }
+	public void setRequestCount(int requestCount) {
+		this.requestCount = requestCount;
+	}
 
-    public String getMaxRequestUri() {
-        return maxRequestUri;
-    }
+	public int getErrorCount() {
+		return errorCount;
+	}
 
-    public void setMaxRequestUri(String maxRequestUri) {
-        this.maxRequestUri = maxRequestUri;
-    }
+	public void setErrorCount(int errorCount) {
+		this.errorCount = errorCount;
+	}
 
-    public int getRequestCount() {
-        return requestCount;
-    }
+	public String getWorkerThreadName() {
+		return workerThreadName;
+	}
 
-    public void setRequestCount(int requestCount) {
-        this.requestCount = requestCount;
-    }
+	public ObjectName getRpName() {
+		return rpName;
+	}
 
-    public int getErrorCount() {
-        return errorCount;
-    }
+	public long getLastRequestProcessingTime() {
+		return lastRequestProcessingTime;
+	}
 
-    public void setErrorCount(int errorCount) {
-        this.errorCount = errorCount;
-    }
+	public void setWorkerThreadName(String workerThreadName) {
+		this.workerThreadName = workerThreadName;
+	}
 
-    public String getWorkerThreadName() {
-        return workerThreadName;
-    }
+	public void setRpName(ObjectName rpName) {
+		this.rpName = rpName;
+	}
 
-    public ObjectName getRpName() {
-        return rpName;
-    }
-
-    public long getLastRequestProcessingTime() {
-        return lastRequestProcessingTime;
-    }
-
-    public void setWorkerThreadName(String workerThreadName) {
-        this.workerThreadName = workerThreadName;
-    }
-
-    public void setRpName(ObjectName rpName) {
-        this.rpName = rpName;
-    }
-
-    public void setLastRequestProcessingTime(long lastRequestProcessingTime) {
-        this.lastRequestProcessingTime = lastRequestProcessingTime;
-    }
-
-    public long getLastRequestSize() {
-        return lastRequestSize;
-    }
-
-    public long getLastResponseSize() {
-        return lastResponseSize;
-    }
-
-    public String getLastRequestUri() {
-        return lastRequestUri;
-    }
+	public void setLastRequestProcessingTime(long lastRequestProcessingTime) {
+		this.lastRequestProcessingTime = lastRequestProcessingTime;
+	}
 }

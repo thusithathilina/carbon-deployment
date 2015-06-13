@@ -22,7 +22,6 @@ import org.apache.catalina.util.ServerInfo;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.openejb.loader.IO;
-import org.apache.openejb.loader.ProvisioningUtil;
 import org.apache.openejb.loader.SystemInstance;
 import org.apache.openejb.util.JuliLogStreamFactory;
 import org.apache.openejb.util.OpenEjbVersion;
@@ -33,189 +32,222 @@ import org.wso2.carbon.base.ServerConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * AS baked ServerListener. Borrowed large parts of the code from TomEE
  * where TomEE doesn't provide extension points.
- *
+ * <p/>
  * Changes can be found between the comments
  * "WSO2 START PATCH" and "WSO2 END PATCH"
- *
+ * <p/>
  * In addition, java util logging has been changed to commons logging
- *
  */
 public class ASTomEEServerListener extends ServerListener {
 
-    private static final Log log = LogFactory.getLog(ASTomEEServerListener.class.getName());
+	private static final Log log = LogFactory.getLog(ASTomEEServerListener.class.getName());
+	private static final AtomicBoolean listenerInstalled = new AtomicBoolean(false);
 
-    static private boolean listenerInstalled;
+	public void lifecycleEvent(LifecycleEvent event) {
+		if (Lifecycle.BEFORE_INIT_EVENT.equals(event.getType()) && StandardServer.class.isInstance(event.getSource())) {
+			installServerInfo();
+		}
 
-    public void lifecycleEvent(LifecycleEvent event) {
-        if (Lifecycle.BEFORE_INIT_EVENT.equals(event.getType()) && StandardServer.class.isInstance(event.getSource())) {
-            installServerInfo();
-        }
+		synchronized (listenerInstalled) {
 
-        // only install once
-        if (listenerInstalled || !Lifecycle.AFTER_INIT_EVENT.equals(event.getType())) return;
-        if (!(event.getSource() instanceof StandardServer)) return;
+			// only install once
+			if (listenerInstalled.get() || !Lifecycle.AFTER_INIT_EVENT.equals(event.getType())) {
+				return;
+			}
+			if (!(event.getSource() instanceof StandardServer)) {
+				return;
+			}
 
-        try {
-            final StandardServer server = (StandardServer) event.getSource();
+			try {
+				final StandardServer server = (StandardServer) event.getSource();
 
-            TomcatHelper.setServer(server);
+				TomcatHelper.setServer(server);
 
-            final Properties properties = new Properties();
-            System.getProperties().setProperty("openejb.embedder.source", getClass().getSimpleName());
-            properties.setProperty("openejb.embedder.source", getClass().getSimpleName());
+				final Properties properties = new Properties();
+				System.getProperties().setProperty("openejb.embedder.source", getClass().getSimpleName());
+				properties.setProperty("openejb.embedder.source", getClass().getSimpleName());
 
+				// if SystemInstance is already initialized, then return
+				if (SystemInstance.isInitialized()) {
+					return;
+				}
 
-            // if SystemInstance is already initialized, then return
-            if (SystemInstance.isInitialized()) {
-                return;
-            }
+				// set the openejb.loader property to tomcat-system
+				properties.setProperty("openejb.loader", "tomcat-system");
 
-            properties.setProperty("tomee.webapp.classloader.enrichment.skip","true");
+				// Get the value of catalina.home and set it to openejb.home
+				final String catalinaHome = System.getProperty("catalina.home");
+				properties.setProperty("openejb.home", catalinaHome);
 
-            // set the openejb.loader property to tomcat-system
-            properties.setProperty("openejb.loader", "tomcat-system");
+				//Sets system property for openejb.home
+				System.setProperty("openejb.home", catalinaHome);
 
-            properties.setProperty("openejb.system.apps","false");
-            // Get the value of catalina.home and set it to openejb.home
-            String catalinaHome = System.getProperty("catalina.base");
-            properties.setProperty("openejb.home", catalinaHome);
+				//get the value of catalina.base and set it to openejb.base
+				final String catalinaBase = System.getProperty("catalina.base");
+				properties.setProperty("openejb.base", catalinaBase);
 
-            //Sets system property for openejb.home
-            System.setProperty("openejb.home", catalinaHome);
+				//Sets system property for openejb.base
+				System.setProperty("openejb.base", catalinaBase);
 
-            //get the value of catalina.base and set it to openejb.base
-            String catalinaBase = System.getProperty("catalina.base");
-            properties.setProperty("openejb.base", catalinaBase);
+				// System.setProperty("tomcat.version", "x.y.z.w");
+				// System.setProperty("tomcat.built", "mmm dd yyyy hh:mm:ss");
+				// set the System properties, tomcat.version, tomcat.built
+				final ClassLoader classLoader = ServerListener.class.getClassLoader();
+				try {
+					final Properties tomcatServerInfo = IO.readProperties(
+							classLoader.getResourceAsStream("org/apache/catalina/util/ServerInfo.properties"),
+							new Properties());
 
-            //Sets system property for openejb.base
-            System.setProperty("openejb.base", catalinaBase);
+					String serverNumber = tomcatServerInfo.getProperty("server.number");
+					if (serverNumber == null) {
+						// Tomcat5 only has server.info
+						final String serverInfo = tomcatServerInfo.getProperty("server.info");
+						if (serverInfo != null) {
+							final int slash = serverInfo.indexOf('/');
+							serverNumber = serverInfo.substring(slash + 1);
+						}
+					}
+					if (serverNumber != null) {
+						System.setProperty("tomcat.version", serverNumber);
+					}
 
+					final String serverBuilt = tomcatServerInfo.getProperty("server.built");
+					if (serverBuilt != null) {
+						System.setProperty("tomcat.built", serverBuilt);
+					}
+				} catch (final Throwable e) {
+					// no-op
+				}
 
-            // System.setProperty("tomcat.version", "x.y.z.w");
-            // System.setProperty("tomcat.built", "mmm dd yyyy hh:mm:ss");
-            // set the System properties, tomcat.version, tomcat.built
-            try {
-                ClassLoader classLoader = ServerListener.class.getClassLoader();
-                Properties tomcatServerInfo = IO.readProperties(classLoader.getResourceAsStream("org/apache/catalina/util/ServerInfo.properties"), new Properties());
+			    /*final TomcatLoader loader = new TomcatLoader();
+			    loader.initSystemInstance(properties);
 
-                String serverNumber = tomcatServerInfo.getProperty("server.number");
-                if (serverNumber == null) {
-                    // Tomcat5 only has server.info
-                    String serverInfo = tomcatServerInfo.getProperty("server.info");
-                    if (serverInfo != null) {
-                        int slash = serverInfo.indexOf('/');
-                        serverNumber = serverInfo.substring(slash + 1);
-                    }
-                }
-                if (serverNumber != null) {
-                    System.setProperty("tomcat.version", serverNumber);
-                }
+			    // manage additional libraries
+			    if (URLClassLoader.class.isInstance(classLoader)) {
+				    final URLClassLoader ucl = URLClassLoader.class.cast(classLoader);
+				    try {
+					    final Method addUrl = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
+					    final boolean acc = addUrl.isAccessible();
+					    try {
+						    for (final File f : ProvisioningUtil.addAdditionalLibraries()) {
+							    addUrl(ucl, addUrl, f.toURI().toURL());
+						    }
 
-                String serverBuilt = tomcatServerInfo.getProperty("server.built");
-                if (serverBuilt != null) {
-                    System.setProperty("tomcat.built", serverBuilt);
-                }
-            } catch (Throwable e) {
-                // no-op
-            }
+						    final File globalJarsTxt = SystemInstance.get().getConf(QuickJarsTxtParser.FILE_NAME);
+						    final ClassLoaderConfigurer configurer = QuickJarsTxtParser.parse(globalJarsTxt);
+						    if (configurer != null) {
+							    for (final URL f : configurer.additionalURLs()) {
+								    addUrl(ucl, addUrl, f);
+							    }
+						    }
+					    } finally {
+						    addUrl.setAccessible(acc);
+					    }
+				    } catch (final Exception e) {
+					    log.error(e.getMessage(), e);
+				    }
+			    } else {
+				    log.debug("container classloader is not an URL one so can't check provisining: " + classLoader);
+			    }
 
-            // manage additional libraries
-            try {
-                ProvisioningUtil.addAdditionalLibraries();
-            } catch (IOException e) {
-                // ignored
-            }
+			    loader.initialize(properties);*/
 
-            // ###### WSO2 START PATCH ###### //
-            setServiceManager(properties);
-            setOpenJPALogFactory();
-            readSystemPropertiesConf();
-            ASTomcatLoader loader = new ASTomcatLoader();
-            loader.init(properties);
-            // ###### WSO2 END PATCH ###### //
+				// ###### WSO2 START PATCH ###### //
+				setServiceManager(properties);
+				setOpenJPALogFactory();
+				readSystemPropertiesConf();
+				ASTomcatLoader loader = new ASTomcatLoader();
+				loader.init(properties);
+				// ###### WSO2 END PATCH ###### //
 
-            listenerInstalled = true;
-        } catch (Exception e) {
-            log.error("TomEE Listener can't start OpenEJB", e);
-            // e.printStackTrace(System.err);
-        }
-    }
+				listenerInstalled.set(true);
+			} catch (final Exception e) {
+				log.error("TomEE Listener can't start OpenEJB", e);
+				// e.printStackTrace(System.err);
+			}
+		}
+	}
 
-    /**
-     * Set AS specific OpenJPA logger since OpenJPA logging is broken with default implementation.
-     * Borrowed the segment from a static block in JuliLogStreamFactory.
-     *
-     */
-    protected void setOpenJPALogFactory() {
-        try {
-            JuliLogStreamFactory.class.getClassLoader().loadClass("org.wso2.carbon.javaee.tomee.openjpa.JULOpenJPALogFactory");
-            //System.setProperty("openjpa.Log", "org.apache.openejb.openjpa.JULOpenJPALogFactory"); //the default
-            System.setProperty("openjpa.Log", "org.wso2.carbon.javaee.tomee.openjpa.JULOpenJPALogFactory");
-        } catch (Exception ignored) {
-            log.debug(ignored.getMessage(), ignored);
-            // no-op: openjpa is not at the classpath so don't trigger it loading with our logger
-        }
-    }
+	/**
+	 * Set AS specific OpenJPA logger since OpenJPA logging is broken with default implementation.
+	 * Borrowed the segment from a static block in JuliLogStreamFactory.
+	 */
+	protected void setOpenJPALogFactory() {
+		try {
+			JuliLogStreamFactory.class.getClassLoader()
+			                          .loadClass("org.wso2.carbon.javaee.tomee.openjpa.JULOpenJPALogFactory");
+			//System.setProperty("openjpa.Log", "org.apache.openejb.openjpa.JULOpenJPALogFactory"); //the default
+			System.setProperty("openjpa.Log", "org.wso2.carbon.javaee.tomee.openjpa.JULOpenJPALogFactory");
+		} catch (Exception ignored) {
+			log.debug(ignored.getMessage(), ignored);
+			// no-op: openjpa is not at the classpath so don't trigger it loading with our logger
+		}
+	}
 
-    protected void setServiceManager(Properties properties) {
-        properties.put("openejb.service.manager.class",
-                "org.wso2.carbon.javaee.tomee.osgi.ASServiceManagerExtender");
-    }
+	protected void setServiceManager(Properties properties) {
+		properties.put("openejb.service.manager.class", "org.wso2.carbon.javaee.tomee.osgi.ASServiceManagerExtender");
+	}
 
-    private void installServerInfo() {
-//        if (SystemInstance.get().getOptions().get("tomee.keep-server-info", false)) {
-//            return;
-//        }
+	private void installServerInfo() {
+		//        if (SystemInstance.get().getOptions().get("tomee.keep-server-info", false)) {
+		//            return;
+		//        }
 
-        // force static init
-        final String value = ServerInfo.getServerInfo();
+		// force static init
+		final String value = ServerInfo.getServerInfo();
 
-        Field field = null;
-        boolean acc = true;
-        try {
-            field = ServerInfo.class.getDeclaredField("serverInfo");
-            acc = field.isAccessible();
-            final int slash = value.indexOf('/');
-            field.setAccessible(true);
-            final String version = OpenEjbVersion.get().getVersion();
-            final String tomeeVersion = (Integer.parseInt("" + version.charAt(0)) - 3) + version.substring(1, version.length());
-            final String asVersion = ServerConfiguration.getInstance().getFirstProperty("Version");
-            field.set(null, "WSO2 AS " + asVersion + " (" +
-                      value.substring(0, slash) + " " + value.substring(slash+1) +
-                      "/TomEE " + tomeeVersion + ")");
-        } catch (Exception e) {
-            // no-op
-        } finally {
-            if (field != null) {
-                field.setAccessible(acc);
-            }
-        }
-    }
+		Field field = null;
+		boolean acc = true;
+		try {
+			field = ServerInfo.class.getDeclaredField("serverInfo");
+			acc = field.isAccessible();
+			final int slash = value.indexOf('/');
+			field.setAccessible(true);
+			final String version = OpenEjbVersion.get().getVersion();
+			final String tomeeVersion = (Integer.parseInt(Character.toString(version.charAt(0))) - 3) +
+			                            version.substring(1, version.length());
+			final int modifiers = field.getModifiers();
+			if (Modifier.isFinal(modifiers)) {
+				final Field modifiersField = Field.class.getDeclaredField("modifiers");
+				modifiersField.setAccessible(true);
+				modifiersField.setInt(field, modifiers & ~Modifier.FINAL);
+			}
+			field.set(null,
+			          value.substring(0, slash) + " (TomEE)" + value.substring(slash) + " (" + tomeeVersion + ")");
+		} catch (final Exception e) {
+			// no-op
+		} finally {
+			if (field != null) {
+				field.setAccessible(acc);
+			}
+		}
+	}
 
-    private void readSystemPropertiesConf() {
-        String systemPropertiesPath = new File(System.getProperty("carbon.home")).getAbsolutePath() +
-                File.separator + "repository" + File.separator + "conf" + File.separator +
-                "tomee" + File.separator + "system.properties";
+	private void readSystemPropertiesConf() {
+		String systemPropertiesPath = new File(System.getProperty("carbon.home")).getAbsolutePath() +
+		                              File.separator + "repository" + File.separator + "conf" + File.separator +
+		                              "tomee" + File.separator + "system.properties";
 
-        File file = new File(systemPropertiesPath);
-        if (!file.exists()) {
-            return;
-        }
+		File file = new File(systemPropertiesPath);
+		if (!file.exists()) {
+			return;
+		}
 
-        final Properties systemProperties;
-        try {
-            systemProperties = IO.readProperties(file);
-        } catch (IOException e) {
-            return;
-        }
+		final Properties systemProperties;
+		try {
+			systemProperties = IO.readProperties(file);
+		} catch (IOException e) {
+			return;
+		}
 
-        SystemInstance.get().getProperties().putAll(systemProperties);
-    }
-
+		SystemInstance.get().getProperties().putAll(systemProperties);
+	}
 
 }

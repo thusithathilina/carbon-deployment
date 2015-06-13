@@ -828,8 +828,13 @@
                 </exclusions>
             </dependency>
             <dependency>
-                <groupId>org.wso2.tomcat</groupId>
+                <groupId>org.wso2.orbit.org.apache.tomcat</groupId>
                 <artifactId>tomcat</artifactId>
+                <version>${orbit.version.tomcat}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.wso2.orbit.org.apache.tomcat.ha</groupId>
+                <artifactId>tomcat-catalina-ha</artifactId>
                 <version>${orbit.version.tomcat}</version>
             </dependency>
             <dependency>
@@ -1348,7 +1353,7 @@
         <carbon.p2.plugin.version>1.5.4</carbon.p2.plugin.version>
 
         <!-- Carbon kernel version-->
-        <carbon.kernel.version>4.4.0</carbon.kernel.version>
+        <carbon.kernel.version>4.4.1-SNAPSHOT</carbon.kernel.version>
         <carbon.kernel.imp.pkg.version>[4.4.0, 4.5.0)</carbon.kernel.imp.pkg.version>
         <carbon.kernel.registry.imp.pkg.version>[1.0.1, 2.0.0)</carbon.kernel.registry.imp.pkg.version>
 
@@ -1365,7 +1370,7 @@
         <carbon.deployment.exp.pkg.version>${carbon.deployment.version}</carbon.deployment.exp.pkg.version>
         <carbon.deployment.imp.pkg.version>[4.4.0, 4.5.0)</carbon.deployment.imp.pkg.version>
 
-        <version.tomcat>7.0.59</version.tomcat>
+        <version.tomcat>8.0.20</version.tomcat>
         <orbit.version.tomcat>${version.tomcat}.wso2v1</orbit.version.tomcat>
 
         <eclipse.osgi.version>3.9.1.v20130814-1242</eclipse.osgi.version>
@@ -1410,8 +1415,8 @@
         <!--<version.equinox.osgi.services>3.3.100.v20120522-1822</version.equinox.osgi.services>-->
 
         <!-- JSP API -->
-        <exp.pkg.version.javax.servlet.jsp>2.2.0</exp.pkg.version.javax.servlet.jsp>
-        <imp.pkg.version.javax.servlet.jsp>[2.2.0, 2.3.0)</imp.pkg.version.javax.servlet.jsp>
+        <exp.pkg.version.javax.servlet.jsp>2.3.0</exp.pkg.version.javax.servlet.jsp>
+        <imp.pkg.version.javax.servlet.jsp>[2.2.0, 2.4.0)</imp.pkg.version.javax.servlet.jsp>
 
         <!-- JSTL -->
         <orbit.version.jstl>1.2.1.wso2v1</orbit.version.jstl>
@@ -1426,12 +1431,12 @@
         <slf4j.wso2.version>1.5.10.wso2v1</slf4j.wso2.version>
 
         <!-- Servlet API -->
-        <exp.pkg.version.javax.servlet>2.6.0</exp.pkg.version.javax.servlet>
-        <imp.pkg.version.javax.servlet>[2.6.0, 3.0.0)</imp.pkg.version.javax.servlet>
+        <exp.pkg.version.javax.servlet>3.1.0</exp.pkg.version.javax.servlet>
+        <imp.pkg.version.javax.servlet>[2.6.0, 3.2.0)</imp.pkg.version.javax.servlet>
 
         <!-- Servet Version -->
         <version.javax.servlet.jsp>2.2.0.v201112011158</version.javax.servlet.jsp>
-        <version.javax.servlet>3.0.0.v201112011016</version.javax.servlet>
+        <version.javax.servlet>3.1.0.v20140303-1611</version.javax.servlet>
 
         <!-- Misc -->
         <!--<jxl.wso2.version>2.6.8.wso2v1</jxl.wso2.version>-->
@@ -1497,8 +1502,8 @@
 
         <javax.ws.rs-api.version>2.0-m10</javax.ws.rs-api.version>
 
-        <tomee.version>1.6.0.1</tomee.version>
-        <tomee.orbit.version>${tomee.version}.wso2v3</tomee.orbit.version>
+        <tomee.version>2.0.0-SNAPSHOT</tomee.version>
+        <tomee.orbit.version>${tomee.version}.wso2v1</tomee.orbit.version>
         <tomee.resources.orbit.version>${tomee.version}.wso2v1</tomee.resources.orbit.version>
         <openwebbeans.version>1.2.1</openwebbeans.version>
         <openwebbeans.orbit.version>${openwebbeans.version}.wso2v1</openwebbeans.orbit.version>

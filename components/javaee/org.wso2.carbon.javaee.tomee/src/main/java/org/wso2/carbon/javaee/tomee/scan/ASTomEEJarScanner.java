@@ -17,6 +17,7 @@ package org.wso2.carbon.javaee.tomee.scan;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.tomcat.JarScanType;
 import org.apache.tomcat.JarScannerCallback;
 import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.scan.Constants;
@@ -31,7 +32,6 @@ import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.Set;
 
 /**
  * TomEE jar scanner with Carbon bits.
@@ -40,90 +40,85 @@ import java.util.Set;
  */
 public class ASTomEEJarScanner extends TomEEJarScanner {
 
-    private static final Log log = LogFactory.getLog(ASTomEEJarScanner.class);
-    private static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+	private static final Log log = LogFactory.getLog(ASTomEEJarScanner.class);
+	private static final StringManager sm = StringManager.getManager(Constants.Package);
 
-    private static final String CARBON_PLUGINS_DIR_PATH = System.getProperty("carbon.home") +
-            File.separator +"repository" + File.separator + "components" + File.separator + "plugins";
+	private static final String CARBON_PLUGINS_DIR_PATH = System.getProperty("carbon.home") +
+	                                                      File.separator + "repository" + File.separator +
+	                                                      "components" + File.separator + "plugins";
 
+	@Override
+	public void scan(JarScanType scanType, ServletContext context, JarScannerCallback callback) {
 
-    @Override
-    public void scan(ServletContext context, ClassLoader classloader,
-                     JarScannerCallback callback, Set<String> jarsToSkip) {
+		ClassLoader loader = Thread.currentThread().getContextClassLoader();
 
-        ClassLoader loader =
-                Thread.currentThread().getContextClassLoader();
+		while (loader != null) {
+			// WSO2 Carbon specific code snippet
+			// Setting the plugins directory only if the parent classLoader is a bundleClassLoader.
+			if (loader instanceof BundleClassLoader) {
+				File pluginsDir = new File(CARBON_PLUGINS_DIR_PATH);
+				File[] jarFiles = pluginsDir.listFiles(new FileFilter() {
+					public boolean accept(File file) {
+						return file.getName().endsWith(Constants.JAR_EXT);
+					}
+				});
+				// processing collected jar files for tldListeners
+				for (File jarFile : jarFiles) {
+					/*try {
+						process(callback, jarFile.toURI().toURL()); //TODO fix this
+					} catch (IOException e) {
+						log.warn(sm.getString("jarScan.classloaderFail"), e);
+					}*/
+				}
+			}
+		}
 
-        while (loader != null) {
-            // WSO2 Carbon specific code snippet
-            // Setting the plugins directory only if the parent classLoader is a bundleClassLoader.
-            if (loader instanceof BundleClassLoader) {
-                File  pluginsDir = new File(CARBON_PLUGINS_DIR_PATH);
-                File[] jarFiles = pluginsDir.listFiles(new FileFilter(){
-                    public boolean accept(File file) {
-                        return file.getName().endsWith(Constants.JAR_EXT);
-                    }
-                });
-                // processing collected jar files for tldListeners
-                for (File jarFile : jarFiles) {
-                    try {
-                        process(callback, jarFile.toURI().toURL());
-                    } catch (IOException e) {
-                        log.warn(sm.getString("jarScan.classloaderFail"),e);
-                    }
-                }
-            }
-        }
+	}
 
-    }
+	/**
+	 * Scan a URL for JARs with the optional extensions to look at all files
+	 * and all directories.
+	 *//*
+	private void process(JarScannerCallback callback, URL url, String webappPath, boolean isWebapp) throws IOException {
 
-    /**
-     * Scan a URL for JARs with the optional extensions to look at all files
-     * and all directories.
-     */
-    private void process(JarScannerCallback callback, URL url)
-            throws IOException {
+		if (log.isTraceEnabled()) {
+			log.trace(sm.getString("jarScan.jarUrlStart", url));
+		}
 
-        if (log.isTraceEnabled()) {
-            log.trace(sm.getString("jarScan.jarUrlStart", url));
-        }
+		URLConnection conn = url.openConnection();
+		if (conn instanceof JarURLConnection) {
+			callback.scan((JarURLConnection) conn, webappPath, isWebapp);
+		} else {
+			String urlStr = url.toString();
+			if (urlStr.startsWith("file:") || urlStr.startsWith("jndi:")) {
+				if (urlStr.endsWith(Constants.JAR_EXT)) {
+					URL jarURL = new URL("jar:" + urlStr + "!/");
+					callback.scan((JarURLConnection) jarURL.openConnection(), webappPath, isWebapp);
+				} else {
+					File f;
+					try {
+						f = new File(url.toURI());
+						if (f.isFile() && isScanAllFiles()) {
+							// Treat this file as a JAR
+							URL jarURL = new URL("jar:" + urlStr + "!/");
+							callback.scan((JarURLConnection) jarURL.openConnection(), webappPath, isWebapp);
+						} else if (f.isDirectory() && isScanAllDirectories()) {
+							File metainf = new File(f.getAbsoluteFile() +
+							                        File.separator + "META-INF");
+							if (metainf.isDirectory()) {
+								callback.scan(f, webappPath, isWebapp);
+							}
+						}
+					} catch (URISyntaxException e) {
+						// Wrap the exception and re-throw
+						IOException ioe = new IOException();
+						ioe.initCause(e);
+						throw ioe;
+					}
+				}
+			}
+		}
 
-        URLConnection conn = url.openConnection();
-        if (conn instanceof JarURLConnection) {
-            callback.scan((JarURLConnection) conn);
-        } else {
-            String urlStr = url.toString();
-            if (urlStr.startsWith("file:") || urlStr.startsWith("jndi:")) {
-                if (urlStr.endsWith(Constants.JAR_EXT)) {
-                    URL jarURL = new URL("jar:" + urlStr + "!/");
-                    callback.scan((JarURLConnection) jarURL.openConnection());
-                } else {
-                    File f;
-                    try {
-                        f = new File(url.toURI());
-                        if (f.isFile() && isScanAllFiles()) {
-                            // Treat this file as a JAR
-                            URL jarURL = new URL("jar:" + urlStr + "!/");
-                            callback.scan((JarURLConnection) jarURL.openConnection());
-                        } else if (f.isDirectory() && isScanAllDirectories()) {
-                            File metainf = new File(f.getAbsoluteFile() +
-                                    File.separator + "META-INF");
-                            if (metainf.isDirectory()) {
-                                callback.scan(f);
-                            }
-                        }
-                    } catch (URISyntaxException e) {
-                        // Wrap the exception and re-throw
-                        IOException ioe = new IOException();
-                        ioe.initCause(e);
-                        throw ioe;
-                    }
-                }
-            }
-        }
-
-    }
-
+	}*/
 
 }

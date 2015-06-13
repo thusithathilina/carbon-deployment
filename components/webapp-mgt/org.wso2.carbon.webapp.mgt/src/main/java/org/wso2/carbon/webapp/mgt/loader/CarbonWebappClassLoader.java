@@ -65,13 +65,7 @@ public class CarbonWebappClassLoader extends WebappClassLoader {
         Class<?> clazz;
 
         // Log access to stopped classloader
-        if (!started) {
-            try {
-                throw new IllegalStateException();
-            } catch (IllegalStateException e) {
-                log.info(sm.getString("webappClassLoader.stopped", name), e);
-            }
-        }
+        checkStateForClassLoading(name);
 
         // (0) Check our previously loaded local class cache
         clazz = findLoadedClass0(name);
@@ -96,7 +90,7 @@ public class CarbonWebappClassLoader extends WebappClassLoader {
         // (0.2) Try loading the class with the system class loader, to prevent
         //       the webapp from overriding J2SE classes
         try {
-            clazz = j2seClassLoader.loadClass(name);
+            clazz = getJavaseClassLoader().loadClass(name);
             if (clazz != null) {
                 if (resolve)
                     resolveClass(clazz);
@@ -160,7 +154,7 @@ public class CarbonWebappClassLoader extends WebappClassLoader {
             log.debug("  Delegating to parent classloader1 " + parent);
         ClassLoader loader = parent;
         if (loader == null)
-            loader = j2seClassLoader;
+            loader = getJavaseClassLoader();
         try {
             clazz = Class.forName(name, false, loader);
             if (clazz != null) {
@@ -199,7 +193,7 @@ public class CarbonWebappClassLoader extends WebappClassLoader {
             if (stream != null) {
                 return stream;
             } else if (name.endsWith(".class") && isSystemPackage(name)) {
-                ClassLoader loader = j2seClassLoader;
+                ClassLoader loader = getJavaseClassLoader();
                 stream = loader.getResourceAsStream(name);
 
                 if (stream != null) {
@@ -269,5 +263,9 @@ public class CarbonWebappClassLoader extends WebappClassLoader {
         return new CompoundEnumeration(tmp);
     }
 
+	@Override
+	public void addURL(URL url) {
+		super.addURL(url);
+	}
 
 }
